@@ -1,0 +1,85 @@
+﻿@page "/{RoomName}"
+@using ChatBlazorApp.Shared
+@using Microsoft.AspNetCore.SignalR.Client
+@inject HttpClient Http
+
+<p>@AppState.UserName</p>
+
+<div class="form-group">
+	<label>
+		Message:
+		<input @bind="messageInput" size="50" />
+	</label>
+</div>
+<button @onclick="Send" disabled="@(HubConnection.State != HubConnectionState.Connected)">Send</button>
+
+<hr>
+
+<ul id="messagesList">
+	@foreach (var message in messages)
+	{
+		<li>@message</li>
+	}
+</ul>
+
+@code {
+	//Keep track of the most previous room name so as to not send a message back there.
+	//the "OnParametersSetAsync()" method has a bug where it is called twice, once
+	//with the old perameter and once with the new one, so by keeping track of the old
+	//parameter you can prevent it from affecting that room.
+	string previousRoomName = "";
+
+	//being able to pass RoomName as a parameter lets you use this page as a template
+	//so you dont repeat code
+	[Parameter] public string RoomName { get; set; }
+	[CascadingParameter] public Microsoft.AspNetCore.SignalR.Client.HubConnection HubConnection { get; set; }
+
+	private List<string> messages = new List<string>();
+	private string userInput;
+	private string messageInput;
+
+	//Whenever a parameter changes it will refresh everything in the task
+	protected override async Task OnParametersSetAsync()
+	{
+		//clear out the list (messages) and clear the text box inputs
+		if (RoomName == previousRoomName)
+			return;
+		previousRoomName = RoomName;
+		messages.Clear();
+		userInput = "";
+		messageInput = "";
+
+		//reset notifications when the user goes to that room
+		if (AppState.Rooms.ContainsKey(RoomName))
+		{
+			AppState.Rooms[RoomName] = 0;
+			AppState.AppStateUpdated?.Invoke();
+		}
+
+		//lets the AppState know what room the user is in
+		AppState.CurrentRoom = this;
+
+		var previousChats = await Http.GetFromJsonAsync<ChatData[]>($"Chat/{RoomName}");
+
+		if (previousChats != null)
+		{
+			foreach (var previousChat in previousChats)
+			{
+				var encodedMsg = $"{previousChat.User}: {previousChat.Message}";
+				messages.Add(encodedMsg);
+			}
+		}
+	}
+
+	//gets messages
+	public void ReceiveMessage(string message)
+	{
+		messages.Add(message);
+		StateHasChanged();
+	}
+
+	//sends messages
+	Task Send() =>
+		HubConnection.SendAsync("SendMessage", AppState.UserName, messageInput, RoomName);
+
+}

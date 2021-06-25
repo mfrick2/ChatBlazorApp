@@ -1,0 +1,55 @@
+﻿@page "/"
+
+@code {
+	//made so that the AppState wont change until the form is submitted
+	protected override void OnInitialized()
+	{
+		appState.UserName = AppState.UserName;
+
+		foreach (var pair in AppState.Rooms)
+		{
+			appState.Rooms.Add(pair.Key, pair.Value);
+		}
+	}
+
+	private void FormSubmit()
+	{
+		AppState.UserName = appState.UserName;
+		AppState.Rooms = new Dictionary<string, int>();
+
+		//an array of all rooms the user is logged into
+		string[] splitArray = appState.RoomsCommaSeperated.Split(',');
+
+		foreach (string s in splitArray)
+		{
+			AppState.Rooms.Add(s, 0);
+		}
+
+		Console.WriteLine("Joining rooms... " + string.Join(',', AppState.Rooms));
+
+		AppState.RoomsCommaSeperated = appState.RoomsCommaSeperated;
+
+		formText = "Signed in Successfully!";
+
+		//trigger the refresh on the nav
+		AppState.AppStateUpdated?.Invoke();
+	}
+
+	AppState appState = new AppState();
+	string formText = "";
+
+}
+
+<h1>Welcom to the Blazer Chat App</h1>
+<p>Pick your username and create / join a room!</p>
+
+<EditForm Model="@appState" OnSubmit="FormSubmit" >
+	<label>User Name:</label>
+	<InputText @bind-Value="@appState.UserName" />
+	<br />
+	<label>Rooms:</label>
+	<InputText @bind-Value="@appState.RoomsCommaSeperated" />
+	<br />
+	<button type="submit">Sign In</button>
+	<p>@formText</p>
+</EditForm>

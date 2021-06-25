@@ -1,0 +1,82 @@
+﻿@inherits LayoutComponentBase
+@using Microsoft.AspNetCore.SignalR.Client
+@inject NavigationManager NavigationManager
+@implements IDisposable
+
+<div class="sidebar">
+	<NavMenu />
+</div>
+
+<div class="main">
+	<div class="content px-4">
+		@*Lets any views that are using this @body use the hub connection*@
+		<CascadingValue Value="hubConnection">
+			@Body
+		</CascadingValue>
+	</div>
+</div>
+
+@code {
+    //connects to the hub.
+    private HubConnection hubConnection;
+
+    //List of rooms the user has joined
+    private List<string> roomsJoined = new List<string>();
+
+    protected override async Task OnInitializedAsync()
+    {
+        //Join the new room(s)
+        AppState.AppStateUpdated += async () =>
+        {
+            var newRooms = AppState.Rooms.Where(n => !roomsJoined.Contains(n.Key)).Select(n => n.Key).ToList();
+
+            roomsJoined.AddRange(newRooms);
+
+            foreach (var room in newRooms)
+            {
+                await hubConnection.SendAsync("JoinRoom", room);
+            }
+        };
+
+        hubConnection = new HubConnectionBuilder()
+            .WithUrl(NavigationManager.ToAbsoluteUri("/chathub"))
+            .Build();
+
+        hubConnection.On<string, string, string>("ReceiveMessage", (user, message, roomName) =>
+        {
+            //identifies which room you are in if you are connected
+            // or signed into multiple rooms
+
+            if (AppState.CurrentRoom?.RoomName == roomName)
+            {
+                var encodedMsg = $"{user}: {message}";
+                AppState.CurrentRoom.ReceiveMessage(encodedMsg);
+            }
+            //a notification to let you know there is a message in one of the other rooms
+            else
+            {
+                // Notification by that room.
+                if (AppState.Rooms.ContainsKey(roomName))
+                {
+                    Console.WriteLine("Notification Increasing");
+                    AppState.Rooms[roomName] = AppState.Rooms[roomName] + 1;
+                    AppState.AppStateUpdated?.Invoke();
+                }
+            }
+        });
+
+        await hubConnection.StartAsync();
+
+        //
+    }
+
+    public bool IsConnected =>
+        hubConnection.State == HubConnectionState.Connected;
+
+    public void Dispose()
+    {
+        _ = hubConnection.DisposeAsync();
+    }
+
+
+}
